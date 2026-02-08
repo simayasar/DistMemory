@@ -27,10 +27,16 @@ python src/main.py --role backup
 python src/main.py --role backup
 ```
 
-## Launcher 
+## Client Terminal ( playing on terminal)
+```bash
+python src/client_terminal.py
+```
+
+## Launcher ( playing on browser)
 ```bash
 python src/launcher.py
 ```
 
 ## Notes
 Do not commit venv/ to GitHub.
+
