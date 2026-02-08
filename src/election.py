@@ -1,4 +1,6 @@
-"""Bully Algorithm implementation for leader election via UDP"""
+"""
+This module implements the Bully Algorithm for leader election. It handles UDP broadcasting and coordination to determine the new leader when the primary server fails.
+"""
 
 import json
 import socket
@@ -11,7 +13,12 @@ BROADCAST_ADDR = ("255.255.255.255", ELECTION_UDP_PORT)
 
 
 def get_local_ip() -> str:
-    """Find local IP address by connecting to public DNS (no data sent)"""
+    """
+    Determines the local IP address of the machine.
+    
+    Uses a dummy connection to a public DNS (8.8.8.8) to find the primary network interface IP.
+    Does not actually send data. Returns "127.0.0.1" on failure.
+    """
     # Best-effort local IP discovery (no internet needed, just uses routing table)
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
@@ -24,7 +31,14 @@ def get_local_ip() -> str:
 
 
 class BullyElection:
-    """Simple Bully Election over UDP"""
+    """
+    Implements a simplified Bully Election algorithm over UDP.
+    
+    Attributes:
+        server_id (int): Unique ID of this server.
+        ws_port (int): WebSocket port to advertise if this server becomes leader.
+        ip (str): Local IP address.
+    """
 
     def __init__(self, server_id: int, ws_port: int):
         self.server_id = server_id
@@ -47,7 +61,9 @@ class BullyElection:
         self._election_in_progress = False
 
     def start(self):
-        """Start the background listener"""
+        """
+        Starts the election listener thread.
+        """
         self._listener.start()
         print(f"[ELECT] Listening UDP {ELECTION_UDP_PORT} as id={self.server_id} ip={self.ip}")
 
@@ -59,17 +75,28 @@ class BullyElection:
             pass
 
     def _send_broadcast(self, payload: dict):
-        """Send UDP broadcast to subnet"""
+        """
+        Sends a UDP broadcast message to all nodes on the subnet.
+        """
         data = json.dumps(payload).encode("utf-8")
         self.sock.sendto(data, BROADCAST_ADDR)
 
     def _send_unicast(self, addr, payload: dict):
-        """Send UDP message to specific address"""
+        """
+        Sends a UDP unicast message to a specific address.
+        """
         data = json.dumps(payload).encode("utf-8")
         self.sock.sendto(data, addr)
 
     def _listen_loop(self):
-        """Handle incoming UDP messages (ELECTION, OK, COORDINATOR)"""
+        """
+        Background thread loop for handling incoming UDP election messages.
+        
+        Handles:
+        - ELECTION: Responds with OK if my ID is higher, then starts own election.
+        - OK: Notes that a higher ID node is alive.
+        - COORDINATOR: Updates the current leader information.
+        """
         while not self._stop:
             try:
                 data, addr = self.sock.recvfrom(65535)
@@ -96,19 +123,52 @@ class BullyElection:
                     if not self._election_in_progress:
                         threading.Thread(target=self.run_election_blocking, daemon=True).start()
 
+
             elif mtype == "OK":
-                # Someone higher is alive
-                self._got_ok = True
+                if isinstance(sid, int) and sid > self.server_id:
+                    self._got_ok = True
+
+
+
 
             elif mtype == "COORDINATOR":
-                # New leader announced
+
+                # A server says: "I am the new leader"
                 if isinstance(sid, int) and isinstance(ip, str) and isinstance(ws_port, int):
+
+                    # If the announced leader ID is smaller than mine,
+                    # it is not allowed to be leader (Bully rule)
+                    if sid < self.server_id:
+
+                        # If I am not already running an election,
+                        # start a new one to become leader
+                        if not self._election_in_progress:
+                            threading.Thread(
+                                target=self.run_election_blocking,
+                                daemon=True
+                            ).start()
+                        # Ignore this wrong coordinator message
+                        continue
+
+                    # If the leader ID is bigger than mine,
+                    # accept it as the real leader
                     self.current_leader = (sid, ip, ws_port)
+                    # Election is finished
                     self._election_in_progress = False
+                    # Print who is the leader
                     print(f"[ELECT] Leader is id={sid} at {ip}:{ws_port}")
 
     def run_election_blocking(self, timeout_sec: float = 1.2) -> Tuple[int, str, int]:
-        """Run blocking election: broadcast ID, wait for higher ID, or become leader"""
+        """
+        Initiates and manages a blocking Bully election process.
+        
+        Steps:
+        1. Broadcasts ELECTION(id).
+        2. Waits for OK responses.
+        3. If no OK received: assumes leadership, broadcasts COORDINATOR, returns self.
+        4. If OK received: waits for COORDINATOR from a higher node
+        5. Returns the (id, ip, port) of the new leader.
+        """
         if self._election_in_progress:
             # if already running, just wait until current_leader is set
             while self.current_leader is None and not self._stop:
