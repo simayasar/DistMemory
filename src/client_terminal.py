@@ -1,16 +1,5 @@
 """
-client_terminal.py
------------------
-Terminal-based game client using TCP sockets instead of WebSocket.
-This demonstrates how to connect to the game server without a browser.
-
-Features:
-- TCP socket connection (native socket, not WebSocket)
-- Interactive CLI with colored output
-- Real-time state updates
-- Failover support (automatic reconnection to backup servers)
-- Retry mechanism for omission faults
-
+Terminal-based game client using TCP sockets.
 """
 
 import asyncio
@@ -519,3 +508,4 @@ if __name__ == "__main__":
         print(f"\n{Colors.YELLOW}Interrupted by user{Colors.RESET}")
     except Exception as e:
         print(f"{Colors.RED}Fatal error: {e}{Colors.RESET}")
+
